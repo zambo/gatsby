@@ -1,13 +1,13 @@
 import React from "react"
 import { render, screen } from "@testing-library/react"
 import { GatsbyImage } from "../gatsby-image.server"
-import { ISharpGatsbyImageData } from "../gatsby-image.browser"
+import { IGatsbyImageData } from "../gatsby-image.browser"
 import { SourceProps } from "../picture"
 
 type GlobalOverride = NodeJS.Global &
   typeof global.globalThis & {
-    SERVER: boolean
-    GATSBY___IMAGE: boolean
+    SERVER: boolean | undefined
+    GATSBY___IMAGE: boolean | undefined
   }
 
 // Prevents terser for bailing because we're not in a babel plugin
@@ -22,8 +22,8 @@ describe(`GatsbyImage server`, () => {
 
   afterEach(() => {
     jest.clearAllMocks()
-    ;(global as GlobalOverride).SERVER = undefined
-    ;(global as GlobalOverride).GATSBY___IMAGE = undefined
+    ;(global as GlobalOverride).SERVER = false
+    ;(global as GlobalOverride).GATSBY___IMAGE = false
   })
 
   it(`shows nothing when the image props is not passed`, () => {
@@ -44,7 +44,7 @@ describe(`GatsbyImage server`, () => {
     it(`has a valid style attributes for fluid layout`, () => {
       const layout = `fluid`
 
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout,
@@ -62,12 +62,15 @@ describe(`GatsbyImage server`, () => {
       expect((wrapper as HTMLElement).style).toMatchInlineSnapshot(`
         CSSStyleDeclaration {
           "0": "position",
+          "1": "overflow",
           "_importants": Object {
+            "overflow": undefined,
             "position": undefined,
           },
-          "_length": 1,
+          "_length": 2,
           "_onChange": [Function],
           "_values": Object {
+            "overflow": "hidden",
             "position": "relative",
           },
         }
@@ -77,7 +80,7 @@ describe(`GatsbyImage server`, () => {
     it(`has a valid style attributes for fixed layout`, () => {
       const layout = `fixed`
 
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout,
@@ -95,17 +98,20 @@ describe(`GatsbyImage server`, () => {
       expect((wrapper as HTMLElement).style).toMatchInlineSnapshot(`
         CSSStyleDeclaration {
           "0": "position",
-          "1": "width",
-          "2": "height",
+          "1": "overflow",
+          "2": "width",
+          "3": "height",
           "_importants": Object {
             "height": undefined,
+            "overflow": undefined,
             "position": undefined,
             "width": undefined,
           },
-          "_length": 3,
+          "_length": 4,
           "_onChange": [Function],
           "_values": Object {
             "height": "100px",
+            "overflow": "hidden",
             "position": "relative",
             "width": "100px",
           },
@@ -116,7 +122,7 @@ describe(`GatsbyImage server`, () => {
     it(`has a valid style attributes for constrained layout`, () => {
       const layout = `constrained`
 
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout,
@@ -134,15 +140,18 @@ describe(`GatsbyImage server`, () => {
       expect((wrapper as HTMLElement).style).toMatchInlineSnapshot(`
         CSSStyleDeclaration {
           "0": "position",
-          "1": "display",
+          "1": "overflow",
+          "2": "display",
           "_importants": Object {
             "display": undefined,
+            "overflow": undefined,
             "position": undefined,
           },
-          "_length": 2,
+          "_length": 3,
           "_onChange": [Function],
           "_values": Object {
             "display": "inline-block",
+            "overflow": "hidden",
             "position": "relative",
           },
         }
@@ -155,13 +164,12 @@ describe(`GatsbyImage server`, () => {
       // no fallback provided
       const images = {}
 
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout: `constrained`,
         images,
         placeholder: { sources: [] },
-        sizes: `192x192`,
         backgroundColor: `red`,
       }
 
@@ -177,22 +185,22 @@ describe(`GatsbyImage server`, () => {
           data-main-image=""
           decoding="async"
           loading="lazy"
-          sizes="192x192"
           style="opacity: 0;"
         />
       `)
     })
 
     it(`has a valid src value when fallback is provided in images`, () => {
-      const images = { fallback: { src: `some-src-fallback.jpg` } }
+      const images = {
+        fallback: { src: `some-src-fallback.jpg`, sizes: `192x192` },
+      }
 
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout: `constrained`,
         images,
         placeholder: { sources: [] },
-        sizes: `192x192`,
         backgroundColor: `red`,
       }
 
@@ -224,16 +232,16 @@ icon64px.png 64w,
 icon-retina.png 2x,
 icon-ultra.png 3x,
 icon.svg`,
+          sizes: `192x192`,
         },
       }
 
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout: `constrained`,
         images,
         placeholder: { sources: [] },
-        sizes: `192x192`,
         backgroundColor: `red`,
       }
 
@@ -263,13 +271,12 @@ icon.svg`,
       // no fallback provided
       const images = {}
 
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout: `constrained`,
         images,
         placeholder: { sources: [] },
-        sizes: `192x192`,
         backgroundColor: `red`,
       }
 
@@ -285,7 +292,6 @@ icon.svg`,
           data-main-image=""
           decoding="async"
           loading="lazy"
-          sizes="192x192"
           style="opacity: 0;"
         />
       `)
@@ -304,13 +310,15 @@ icon.svg`,
         },
       ]
 
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout: `constrained`,
-        images: { sources },
+        images: {
+          sources,
+          fallback: { src: `some-src-fallback.jpg`, sizes: `192x192` },
+        },
         placeholder: { sources: [] },
-        sizes: `192x192`,
         backgroundColor: `red`,
       }
 
@@ -330,6 +338,7 @@ icon.svg`,
             alt="A fake image for testing purpose"
             data-gatsby-image-ssr=""
             data-main-image=""
+            data-src="some-src-fallback.jpg"
             decoding="async"
             loading="lazy"
             sizes="192x192"
@@ -342,13 +351,12 @@ icon.svg`,
 
   describe(`placeholder verifications`, () => {
     it(`has a placeholder in a div with valid styles for fluid layout`, () => {
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout: `fluid`,
         images: {},
         placeholder: { sources: [] },
-        sizes: `192x192`,
         backgroundColor: `red`,
       }
 
@@ -362,19 +370,18 @@ icon.svg`,
           aria-hidden="true"
           data-placeholder-image=""
           sources=""
-          style="opacity: 1; transition: opacity 500ms linear; background-color: red; position: relative;"
+          style="opacity: 1; transition: opacity 500ms linear; background-color: red; position: absolute; top: 0px; left: 0px; bottom: 0px; right: 0px;"
         />
       `)
     })
 
     it(`has a placeholder in a div with valid styles for fixed layout`, () => {
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout: `fixed`,
         images: {},
         placeholder: { sources: [] },
-        sizes: `192x192`,
         backgroundColor: `red`,
       }
 
@@ -388,19 +395,18 @@ icon.svg`,
           aria-hidden="true"
           data-placeholder-image=""
           sources=""
-          style="opacity: 1; transition: opacity 500ms linear; width: 100px; height: 100px; background-color: red; position: relative;"
+          style="opacity: 1; transition: opacity 500ms linear; background-color: red; width: 100px; height: 100px; position: relative;"
         />
       `)
     })
 
     it(`has a placeholder in a div with valid styles for constrained layout`, () => {
-      const image: ISharpGatsbyImageData = {
+      const image: IGatsbyImageData = {
         width: 100,
         height: 100,
         layout: `constrained`,
         images: {},
         placeholder: { sources: [] },
-        sizes: `192x192`,
         backgroundColor: `red`,
       }
 
@@ -414,7 +420,7 @@ icon.svg`,
           aria-hidden="true"
           data-placeholder-image=""
           sources=""
-          style="opacity: 1; transition: opacity 500ms linear; display: inline-block; background-color: red; position: relative;"
+          style="opacity: 1; transition: opacity 500ms linear; background-color: red; position: absolute; top: 0px; left: 0px; bottom: 0px; right: 0px;"
         />
       `)
     })

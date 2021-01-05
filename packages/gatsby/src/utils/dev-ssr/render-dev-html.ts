@@ -6,6 +6,8 @@ import report from "gatsby-cli/lib/reporter"
 import { startListener } from "../../bootstrap/requires-writer"
 import { findPageByPath } from "../find-page-by-path"
 import { getPageData as getPageDataExperimental } from "../get-page-data"
+import { getDevSSRWebpack } from "../../commands/build-html"
+import { emitter } from "../../redux"
 
 const startWorker = (): any => {
   const newWorker = new JestWorker(require.resolve(`./render-dev-html-child`), {
@@ -96,7 +98,7 @@ const ensurePathComponentInSSRBundle = async (
           page.componentChunkName,
           htmlComponentRendererPath
         )
-        if (found || readAttempts === 5) {
+        if (found || readAttempts > 5) {
           clearInterval(searchForStringInterval)
           resolve()
         }
@@ -110,6 +112,7 @@ const ensurePathComponentInSSRBundle = async (
 export const renderDevHTML = ({
   path,
   page,
+  skipSsr = false,
   store,
   htmlComponentRendererPath,
   directory,
@@ -129,26 +132,72 @@ export const renderDevHTML = ({
     }
 
     const { boundActionCreators } = require(`../../redux/actions`)
-    const {
-      createServerVisitedPage,
-      createClientVisitedPage,
-    } = boundActionCreators
+    const { createServerVisitedPage } = boundActionCreators
     // Record this page was requested. This will kick off adding its page
     // component to the ssr bundle (if that's not already happened)
     createServerVisitedPage(pageObj.componentChunkName)
 
-    // We'll also get a head start on compiling the client code (this
-    // call has no effect if the page component is already in the client bundle).
-    createClientVisitedPage(pageObj.componentChunkName)
-
     // Ensure the query has been run and written out.
-    await getPageDataExperimental(pageObj.path)
+    try {
+      await getPageDataExperimental(pageObj.path)
+    } catch {
+      // If we can't get the page, it was probably deleted recently
+      // so let's just do a 404 page.
+      return reject(`404 page`)
+    }
+
+    // Resume the webpack watcher and wait for any compilation necessary to happen.
+    // We timeout after 1.5s as the user might not care per se about SSR.
+    //
+    // We pause and resume so there's no excess webpack activity during normal development.
+    const {
+      devssrWebpackCompiler,
+      devssrWebpackWatcher,
+      needToRecompileSSRBundle,
+    } = getDevSSRWebpack()
+    if (
+      devssrWebpackWatcher &&
+      devssrWebpackCompiler &&
+      needToRecompileSSRBundle
+    ) {
+      let isResolved = false
+      await new Promise(resolve => {
+        function finish(stats: Stats): void {
+          emitter.off(`DEV_SSR_COMPILATION_DONE`, finish)
+          if (!isResolved) {
+            resolve(stats)
+          }
+        }
+        emitter.on(`DEV_SSR_COMPILATION_DONE`, finish)
+        devssrWebpackWatcher.resume()
+        // Suspending is just a flag, so it's safe to re-suspend right away
+        devssrWebpackWatcher.suspend()
+
+        // Timeout after 1.5s.
+        setTimeout(() => {
+          isResolved = true
+          resolve()
+        }, 1500)
+      })
+    }
 
     // Wait for public/render-page.js to update w/ the page component.
-    await ensurePathComponentInSSRBundle(pageObj, directory)
+    const found = await ensurePathComponentInSSRBundle(pageObj, directory)
 
-    // Ensure the query has been run and written out.
-    await getPageDataExperimental(pageObj.path)
+    // If we can't find the page, just force set isClientOnlyPage
+    // which skips rendering the body (so we just serve a shell)
+    // and the page will render normally on the client.
+    //
+    // This only happens on the first time we try to render a page component
+    // and it's taking a while to bundle its page component.
+    if (!found) {
+      isClientOnlyPage = true
+    }
+
+    // If the user added the query string `skip-ssr`, we always just render an empty shell.
+    if (skipSsr) {
+      isClientOnlyPage = true
+    }
 
     try {
       const htmlString = await worker.renderHTML({
@@ -158,8 +207,8 @@ export const renderDevHTML = ({
         directory,
         isClientOnlyPage,
       })
-      resolve(htmlString)
+      return resolve(htmlString)
     } catch (error) {
-      reject(error)
+      return reject(error)
     }
   })

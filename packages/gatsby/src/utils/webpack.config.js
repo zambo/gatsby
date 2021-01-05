@@ -1,5 +1,6 @@
 require(`v8-compile-cache`)
 
+const { isCI } = require(`gatsby-core-utils`)
 const crypto = require(`crypto`)
 const fs = require(`fs-extra`)
 const path = require(`path`)
@@ -173,11 +174,12 @@ module.exports = async (
         return {
           polyfill: directoryPath(`.cache/polyfill-entry`),
           commons: [
-            `${require.resolve(
-              `webpack-hot-middleware/client`
-            )}?path=${getHmrPath()}`,
+            process.env.GATSBY_HOT_LOADER !== `fast-refresh` &&
+              `${require.resolve(
+                `webpack-hot-middleware/client`
+              )}?path=${getHmrPath()}`,
             directoryPath(`.cache/app`),
-          ],
+          ].filter(Boolean),
         }
       case `develop-html`:
         return {
@@ -228,10 +230,21 @@ module.exports = async (
             plugins.eslintGraphqlSchemaReload(),
           ])
           .filter(Boolean)
+        if (process.env.GATSBY_EXPERIMENTAL_DEV_SSR) {
+          // Don't use the default mini-css-extract-plugin setup as that
+          // breaks hmr.
+          configPlugins.push(
+            plugins.extractText({ filename: `[name].css` }),
+            plugins.extractStats()
+          )
+        }
         break
       case `build-javascript`: {
         configPlugins = configPlugins.concat([
-          plugins.extractText(),
+          plugins.extractText({
+            filename: `[name].[contenthash].css`,
+            chunkFilename: `[name].[contenthash].css`,
+          }),
           // Write out stats object mapping named dynamic imports (aka page
           // components) to all their async chunks.
           plugins.extractStats(),
@@ -246,7 +259,9 @@ module.exports = async (
   function getDevtool() {
     switch (stage) {
       case `develop`:
-        return `cheap-module-source-map`
+        return process.env.GATSBY_HOT_LOADER !== `fast-refresh`
+          ? `cheap-module-source-map`
+          : `eval-cheap-module-source-map`
       // use a normal `source-map` for the html phases since
       // it gives better line and column numbers
       case `develop-html`:
@@ -672,6 +687,23 @@ module.exports = async (
 
     config.externals = [
       function (context, request, callback) {
+        if (
+          stage === `develop-html` &&
+          isCI() &&
+          process.env.GATSBY_EXPERIMENTAL_DEV_SSR
+        ) {
+          if (request === `react`) {
+            callback(null, `react/cjs/react.production.min.js`)
+            return
+          } else if (request === `react-dom/server`) {
+            callback(
+              null,
+              `react-dom/cjs/react-dom-server.node.production.min.js`
+            )
+            return
+          }
+        }
+
         const external = isExternal(request)
         if (external !== null) {
           callback(null, external)
