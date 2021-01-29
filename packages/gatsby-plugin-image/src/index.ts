@@ -21,4 +21,5 @@ export {
   ImageFormat,
   Layout,
   Fit,
+  EVERY_BREAKPOINT,
 } from "./image-utils"

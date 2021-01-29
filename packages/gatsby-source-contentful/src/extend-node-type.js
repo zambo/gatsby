@@ -186,8 +186,15 @@ const generateImageSource = (
   height,
   toFormat,
   _fit, // We use resizingBehavior instead
-  { jpegProgressive, quality, cropFocus, backgroundColor, resizingBehavior }
+  options = {}
 ) => {
+  const {
+    jpegProgressive,
+    quality,
+    cropFocus,
+    backgroundColor,
+    resizingBehavior,
+  } = options
   const src = createUrl(filename, {
     width,
     height,
